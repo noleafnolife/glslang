@@ -471,7 +471,7 @@ void TScanContext::fillInKeywordMap()
     (*KeywordMap)["u64vec3"] =                 U64VEC3;
     (*KeywordMap)["u64vec4"] =                 U64VEC4;
 
-    // GL_EXT_shader_explicit_arithmetic_types
+    // GL_KHX_shader_explicit_arithmetic_types
     (*KeywordMap)["int8_t"] =                  INT8_T;
     (*KeywordMap)["i8vec2"] =                  I8VEC2;
     (*KeywordMap)["i8vec3"] =                  I8VEC3;
@@ -591,8 +591,6 @@ void TScanContext::fillInKeywordMap()
     (*KeywordMap)["sampler1DArray"] =          SAMPLER1DARRAY;
 
     (*KeywordMap)["samplerExternalOES"] =      SAMPLEREXTERNALOES; // GL_OES_EGL_image_external
-
-    (*KeywordMap)["__samplerExternal2DY2YEXT"] = SAMPLEREXTERNAL2DY2YEXT; // GL_EXT_YUV_target
 
     (*KeywordMap)["sampler"] =                 SAMPLER;
     (*KeywordMap)["samplerShadow"] =           SAMPLERSHADOW;
@@ -714,8 +712,6 @@ void TScanContext::fillInKeywordMap()
     (*KeywordMap)["taskNV"] =                  PERTASKNV;
 #endif
 
-    (*KeywordMap)["fcoopmatNV"] =              FCOOPMATNV;
-
     ReservedSet = new std::unordered_set<const char*, str_hash, str_eq>;
 
     ReservedSet->insert("common");
@@ -780,7 +776,7 @@ int TScanContext::tokenize(TPpContext* pp, TParserToken& token)
         loc = ppToken.loc;
         parserToken->sType.lex.loc = loc;
         switch (token) {
-        case ';':  afterType = false; afterBuffer = false; return SEMICOLON;
+        case ';':  afterType = false;   return SEMICOLON;
         case ',':  afterType = false;   return COMMA;
         case ':':                       return COLON;
         case '=':  afterType = false;   return EQUAL;
@@ -802,7 +798,7 @@ int TScanContext::tokenize(TPpContext* pp, TParserToken& token)
         case '?':                       return QUESTION;
         case '[':                       return LEFT_BRACKET;
         case ']':                       return RIGHT_BRACKET;
-        case '{':  afterStruct = false; afterBuffer = false; return LEFT_BRACE;
+        case '{':  afterStruct = false; return LEFT_BRACE;
         case '}':                       return RIGHT_BRACE;
         case '\\':
             parseContext.error(loc, "illegal use of escape character", "\\", "");
@@ -949,7 +945,6 @@ int TScanContext::tokenizeIdentifier()
         return keyword;
 
     case BUFFER:
-        afterBuffer = true;
         if ((parseContext.profile == EEsProfile && parseContext.version < 310) ||
             (parseContext.profile != EEsProfile && parseContext.version < 430))
             return identifierOrType();
@@ -1138,8 +1133,8 @@ int TScanContext::tokenizeIdentifier()
         if (parseContext.symbolTable.atBuiltInLevel() ||
             (parseContext.profile != EEsProfile && parseContext.version >= 450 &&
              (parseContext.extensionTurnedOn(E_GL_ARB_gpu_shader_int64) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_int64))))
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_int64))))
             return keyword;
         return identifierOrType();
 
@@ -1153,9 +1148,9 @@ int TScanContext::tokenizeIdentifier()
     case U8VEC4:
         afterType = true;
         if (parseContext.symbolTable.atBuiltInLevel() ||
-            ((parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
+            ((parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
               parseContext.extensionTurnedOn(E_GL_EXT_shader_8bit_storage) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_int8)) &&
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_int8)) &&
               parseContext.profile != EEsProfile && parseContext.version >= 450))
             return keyword;
         return identifierOrType();
@@ -1176,8 +1171,8 @@ int TScanContext::tokenizeIdentifier()
               parseContext.extensionTurnedOn(E_GL_AMD_gpu_shader_int16) ||
 #endif
               parseContext.extensionTurnedOn(E_GL_EXT_shader_16bit_storage) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_int16))))
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_int16))))
             return keyword;
         return identifierOrType();
     case INT32_T:
@@ -1190,8 +1185,8 @@ int TScanContext::tokenizeIdentifier()
     case U32VEC4:
         afterType = true;
         if (parseContext.symbolTable.atBuiltInLevel() ||
-           ((parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-             parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_int32)) &&
+           ((parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+             parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_int32)) &&
              parseContext.profile != EEsProfile && parseContext.version >= 450))
             return keyword;
         return identifierOrType();
@@ -1213,8 +1208,8 @@ int TScanContext::tokenizeIdentifier()
     case F32MAT4X4:
         afterType = true;
         if (parseContext.symbolTable.atBuiltInLevel() ||
-            ((parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_float32)) &&
+            ((parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_float32)) &&
               parseContext.profile != EEsProfile && parseContext.version >= 450))
             return keyword;
         return identifierOrType();
@@ -1237,8 +1232,8 @@ int TScanContext::tokenizeIdentifier()
     case F64MAT4X4:
         afterType = true;
         if (parseContext.symbolTable.atBuiltInLevel() ||
-            ((parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_float64)) &&
+            ((parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_float64)) &&
               parseContext.profile != EEsProfile && parseContext.version >= 450))
             return keyword;
         return identifierOrType();
@@ -1255,8 +1250,8 @@ int TScanContext::tokenizeIdentifier()
               parseContext.extensionTurnedOn(E_GL_AMD_gpu_shader_half_float) ||
 #endif
               parseContext.extensionTurnedOn(E_GL_EXT_shader_16bit_storage) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_float16))))
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_float16))))
             return keyword;
 
         return identifierOrType();
@@ -1280,8 +1275,8 @@ int TScanContext::tokenizeIdentifier()
 #ifdef AMD_EXTENSIONS
               parseContext.extensionTurnedOn(E_GL_AMD_gpu_shader_half_float) ||
 #endif
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types) ||
-              parseContext.extensionTurnedOn(E_GL_EXT_shader_explicit_arithmetic_types_float16))))
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types) ||
+              parseContext.extensionTurnedOn(E_GL_KHX_shader_explicit_arithmetic_types_float16))))
             return keyword;
 
         return identifierOrType();
@@ -1411,13 +1406,6 @@ int TScanContext::tokenizeIdentifier()
         if (parseContext.symbolTable.atBuiltInLevel() ||
             parseContext.extensionTurnedOn(E_GL_OES_EGL_image_external) ||
             parseContext.extensionTurnedOn(E_GL_OES_EGL_image_external_essl3))
-            return keyword;
-        return identifierOrType();
-
-    case SAMPLEREXTERNAL2DY2YEXT:
-        afterType = true;
-        if (parseContext.symbolTable.atBuiltInLevel() ||
-            parseContext.extensionTurnedOn(E_GL_EXT_YUV_target))
             return keyword;
         return identifierOrType();
 
@@ -1614,13 +1602,6 @@ int TScanContext::tokenizeIdentifier()
         return identifierOrType();
 #endif
 
-    case FCOOPMATNV:
-        afterType = true;
-        if (parseContext.symbolTable.atBuiltInLevel() ||
-            parseContext.extensionTurnedOn(E_GL_NV_cooperative_matrix))
-            return keyword;
-        return identifierOrType();
-
     default:
         parseContext.infoSink.info.message(EPrefixInternalError, "Unknown glslang keyword", loc);
         return 0;
@@ -1636,9 +1617,7 @@ int TScanContext::identifierOrType()
     parserToken->sType.lex.symbol = parseContext.symbolTable.find(*parserToken->sType.lex.string);
     if ((afterType == false && afterStruct == false) && parserToken->sType.lex.symbol != nullptr) {
         if (const TVariable* variable = parserToken->sType.lex.symbol->getAsVariable()) {
-            if (variable->isUserType() &&
-                // treat redeclaration of forward-declared buffer/uniform reference as an identifier
-                !(variable->getType().getBasicType() == EbtReference && afterBuffer)) {
+            if (variable->isUserType()) {
                 afterType = true;
 
                 return TYPE_NAME;

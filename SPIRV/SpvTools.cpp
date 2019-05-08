@@ -152,13 +152,6 @@ void SpirvToolsLegalize(const glslang::TIntermediate&, std::vector<unsigned int>
             out << std::endl;
         });
 
-    // If debug (specifically source line info) is being generated, propagate
-    // line information into all SPIR-V instructions. This avoids loss of
-    // information when instructions are deleted or moved. Later, remove
-    // redundant information to minimize final SPRIR-V size.
-    if (options->generateDebugInfo) {
-        optimizer.RegisterPass(spvtools::CreatePropagateLineInfoPass());
-    }
     optimizer.RegisterPass(spvtools::CreateDeadBranchElimPass());
     optimizer.RegisterPass(spvtools::CreateMergeReturnPass());
     optimizer.RegisterPass(spvtools::CreateInlineExhaustivePass());
@@ -187,13 +180,8 @@ void SpirvToolsLegalize(const glslang::TIntermediate&, std::vector<unsigned int>
     }
     optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
     optimizer.RegisterPass(spvtools::CreateCFGCleanupPass());
-    if (options->generateDebugInfo) {
-        optimizer.RegisterPass(spvtools::CreateRedundantLineInfoElimPass());
-    }
 
-    spvtools::OptimizerOptions spvOptOptions;
-    spvOptOptions.set_run_validator(false); // The validator may run as a seperate step later on
-    optimizer.Run(spirv.data(), spirv.size(), &spirv, spvOptOptions);
+    optimizer.Run(spirv.data(), spirv.size(), &spirv);
 }
 
 }; // end namespace glslang

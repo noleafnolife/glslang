@@ -1,7 +1,6 @@
 //
 // Copyright (C) 2013 LunarG, Inc.
 // Copyright (C) 2017 ARM Limited.
-// Copyright (C) 2015-2018 Google, Inc.
 //
 // All rights reserved.
 //
@@ -222,14 +221,8 @@ void TIntermediate::mergeModes(TInfoSink& infoSink, TIntermediate& unit)
         else if (xfbBuffers[b].stride != unit.xfbBuffers[b].stride)
             error(infoSink, "Contradictory xfb_stride");
         xfbBuffers[b].implicitStride = std::max(xfbBuffers[b].implicitStride, unit.xfbBuffers[b].implicitStride);
-        if (unit.xfbBuffers[b].contains64BitType)
-            xfbBuffers[b].contains64BitType = true;
-#ifdef AMD_EXTENSIONS
-        if (unit.xfbBuffers[b].contains32BitType)
-            xfbBuffers[b].contains32BitType = true;
-        if (unit.xfbBuffers[b].contains16BitType)
-            xfbBuffers[b].contains16BitType = true;
-#endif
+        if (unit.xfbBuffers[b].containsDouble)
+            xfbBuffers[b].containsDouble = true;
         // TODO: 4.4 link: enhanced layouts: compare ranges
     }
 
@@ -267,7 +260,6 @@ void TIntermediate::mergeModes(TInfoSink& infoSink, TIntermediate& unit)
 
     MERGE_TRUE(needToLegalize);
     MERGE_TRUE(binaryDoubleOutput);
-    MERGE_TRUE(usePhysicalStorageBuffer);
 }
 
 //
@@ -640,14 +632,8 @@ void TIntermediate::finalCheck(TInfoSink& infoSink, bool keepUncalled)
         error(infoSink, "Cannot use both gl_FragColor and gl_FragData");
 
     for (size_t b = 0; b < xfbBuffers.size(); ++b) {
-        if (xfbBuffers[b].contains64BitType)
+        if (xfbBuffers[b].containsDouble)
             RoundToPow2(xfbBuffers[b].implicitStride, 8);
-#ifdef AMD_EXTENSIONS
-        else if (xfbBuffers[b].contains32BitType)
-            RoundToPow2(xfbBuffers[b].implicitStride, 4);
-        else if (xfbBuffers[b].contains16BitType)
-            RoundToPow2(xfbBuffers[b].implicitStride, 2);
-#endif
 
         // "It is a compile-time or link-time error to have
         // any xfb_offset that overflows xfb_stride, whether stated on declarations before or after the xfb_stride, or
@@ -662,31 +648,18 @@ void TIntermediate::finalCheck(TInfoSink& infoSink, bool keepUncalled)
             xfbBuffers[b].stride = xfbBuffers[b].implicitStride;
 
         // "If the buffer is capturing any
-        // outputs with double-precision or 64-bit integer components, the stride must be a multiple of 8, otherwise it must be a
+        // outputs with double-precision components, the stride must be a multiple of 8, otherwise it must be a
         // multiple of 4, or a compile-time or link-time error results."
-        if (xfbBuffers[b].contains64BitType && ! IsMultipleOfPow2(xfbBuffers[b].stride, 8)) {
-            error(infoSink, "xfb_stride must be multiple of 8 for buffer holding a double or 64-bit integer:");
+        if (xfbBuffers[b].containsDouble && ! IsMultipleOfPow2(xfbBuffers[b].stride, 8)) {
+            error(infoSink, "xfb_stride must be multiple of 8 for buffer holding a double:");
             infoSink.info.prefix(EPrefixError);
             infoSink.info << "    xfb_buffer " << (unsigned int)b << ", xfb_stride " << xfbBuffers[b].stride << "\n";
-#ifdef AMD_EXTENSIONS
-        } else if (xfbBuffers[b].contains32BitType && ! IsMultipleOfPow2(xfbBuffers[b].stride, 4)) {
-#else
         } else if (! IsMultipleOfPow2(xfbBuffers[b].stride, 4)) {
-#endif
             error(infoSink, "xfb_stride must be multiple of 4:");
             infoSink.info.prefix(EPrefixError);
             infoSink.info << "    xfb_buffer " << (unsigned int)b << ", xfb_stride " << xfbBuffers[b].stride << "\n";
         }
-#ifdef AMD_EXTENSIONS
-        // "If the buffer is capturing any
-        // outputs with half-precision or 16-bit integer components, the stride must be a multiple of 2"
-        else if (xfbBuffers[b].contains16BitType && ! IsMultipleOfPow2(xfbBuffers[b].stride, 2)) {
-            error(infoSink, "xfb_stride must be multiple of 2 for buffer holding a half float or 16-bit integer:");
-            infoSink.info.prefix(EPrefixError);
-            infoSink.info << "    xfb_buffer " << (unsigned int)b << ", xfb_stride " << xfbBuffers[b].stride << "\n";
-        }
 
-#endif
         // "The resulting stride (implicit or explicit), when divided by 4, must be less than or equal to the
         // implementation-dependent constant gl_MaxTransformFeedbackInterleavedComponents."
         if (xfbBuffers[b].stride > (unsigned int)(4 * resources.maxTransformFeedbackInterleavedComponents)) {
@@ -1285,11 +1258,7 @@ int TIntermediate::addXfbBufferOffset(const TType& type)
     TXfbBuffer& buffer = xfbBuffers[qualifier.layoutXfbBuffer];
 
     // compute the range
-#ifdef AMD_EXTENSIONS
-    unsigned int size = computeTypeXfbSize(type, buffer.contains64BitType, buffer.contains32BitType, buffer.contains16BitType);
-#else
-    unsigned int size = computeTypeXfbSize(type, buffer.contains64BitType);
-#endif
+    unsigned int size = computeTypeXfbSize(type, buffer.containsDouble);
     buffer.implicitStride = std::max(buffer.implicitStride, qualifier.layoutXfbOffset + size);
     TRange range(qualifier.layoutXfbOffset, qualifier.layoutXfbOffset + size - 1);
 
@@ -1308,18 +1277,11 @@ int TIntermediate::addXfbBufferOffset(const TType& type)
 
 // Recursively figure out how many bytes of xfb buffer are used by the given type.
 // Return the size of type, in bytes.
-// Sets contains64BitType to true if the type contains a 64-bit data type.
-#ifdef AMD_EXTENSIONS
-// Sets contains32BitType to true if the type contains a 32-bit data type.
-// Sets contains16BitType to true if the type contains a 16-bit data type.
-// N.B. Caller must set contains64BitType, contains32BitType, and contains16BitType to false before calling.
-unsigned int TIntermediate::computeTypeXfbSize(const TType& type, bool& contains64BitType, bool& contains32BitType, bool& contains16BitType) const
-#else
-// N.B. Caller must set contains64BitType to false before calling.
-unsigned int TIntermediate::computeTypeXfbSize(const TType& type, bool& contains64BitType) const
-#endif
+// Sets containsDouble to true if the type contains a double.
+// N.B. Caller must set containsDouble to false before calling.
+unsigned int TIntermediate::computeTypeXfbSize(const TType& type, bool& containsDouble) const
 {
-    // "...if applied to an aggregate containing a double or 64-bit integer, the offset must also be a multiple of 8,
+    // "...if applied to an aggregate containing a double, the offset must also be a multiple of 8,
     // and the space taken in the buffer will be a multiple of 8.
     // ...within the qualified entity, subsequent components are each
     // assigned, in order, to the next available offset aligned to a multiple of
@@ -1330,59 +1292,29 @@ unsigned int TIntermediate::computeTypeXfbSize(const TType& type, bool& contains
         // TODO: perf: this can be flattened by using getCumulativeArraySize(), and a deref that discards all arrayness
         assert(type.isSizedArray());
         TType elementType(type, 0);
-#ifdef AMD_EXTENSIONS
-        return type.getOuterArraySize() * computeTypeXfbSize(elementType, contains64BitType, contains16BitType, contains16BitType);
-#else
-        return type.getOuterArraySize() * computeTypeXfbSize(elementType, contains64BitType);
-#endif
+        return type.getOuterArraySize() * computeTypeXfbSize(elementType, containsDouble);
     }
 
     if (type.isStruct()) {
         unsigned int size = 0;
-        bool structContains64BitType = false;
-#ifdef AMD_EXTENSIONS
-        bool structContains32BitType = false;
-        bool structContains16BitType = false;
-#endif
+        bool structContainsDouble = false;
         for (int member = 0; member < (int)type.getStruct()->size(); ++member) {
             TType memberType(type, member);
             // "... if applied to
-            // an aggregate containing a double or 64-bit integer, the offset must also be a multiple of 8,
+            // an aggregate containing a double, the offset must also be a multiple of 8,
             // and the space taken in the buffer will be a multiple of 8."
-            bool memberContains64BitType = false;
-#ifdef AMD_EXTENSIONS
-            bool memberContains32BitType = false;
-            bool memberContains16BitType = false;
-            int memberSize = computeTypeXfbSize(memberType, memberContains64BitType, memberContains32BitType, memberContains16BitType);
-#else
-            int memberSize = computeTypeXfbSize(memberType, memberContains64BitType);
-#endif
-            if (memberContains64BitType) {
-                structContains64BitType = true;
+            bool memberContainsDouble = false;
+            int memberSize = computeTypeXfbSize(memberType, memberContainsDouble);
+            if (memberContainsDouble) {
+                structContainsDouble = true;
                 RoundToPow2(size, 8);
-#ifdef AMD_EXTENSIONS
-            } else if (memberContains32BitType) {
-                structContains32BitType = true;
-                RoundToPow2(size, 4);
-            } else if (memberContains16BitType) {
-                structContains16BitType = true;
-                RoundToPow2(size, 2);
-#endif
             }
             size += memberSize;
         }
 
-        if (structContains64BitType) {
-            contains64BitType = true;
+        if (structContainsDouble) {
+            containsDouble = true;
             RoundToPow2(size, 8);
-#ifdef AMD_EXTENSIONS
-        } else if (structContains32BitType) {
-            contains32BitType = true;
-            RoundToPow2(size, 4);
-        } else if (structContains16BitType) {
-            contains16BitType = true;
-            RoundToPow2(size, 2);
-#endif
         }
         return size;
     }
@@ -1399,23 +1331,11 @@ unsigned int TIntermediate::computeTypeXfbSize(const TType& type, bool& contains
         numComponents = 1;
     }
 
-    if (type.getBasicType() == EbtDouble || type.getBasicType() == EbtInt64 || type.getBasicType() == EbtUint64) {
-        contains64BitType = true;
+    if (type.getBasicType() == EbtDouble) {
+        containsDouble = true;
         return 8 * numComponents;
-#ifdef AMD_EXTENSIONS
-    } else if (type.getBasicType() == EbtFloat16 || type.getBasicType() == EbtInt16 || type.getBasicType() == EbtUint16) {
-        contains16BitType = true;
-        return 2 * numComponents;
-    } else if (type.getBasicType() == EbtInt8 || type.getBasicType() == EbtUint8)
-        return numComponents;
-    else {
-        contains32BitType = true;
-        return 4 * numComponents;
-    }
-#else
     } else
         return 4 * numComponents;
-#endif
 }
 
 const int baseAlignmentVec4Std140 = 16;
@@ -1434,7 +1354,6 @@ int TIntermediate::getBaseAlignmentScalar(const TType& type, int& size)
     case EbtUint8:   size = 1; return 1;
     case EbtInt16:
     case EbtUint16:  size = 2; return 2;
-    case EbtReference: size = 8; return 8;
     default:         size = 4; return 4;
     }
 }
